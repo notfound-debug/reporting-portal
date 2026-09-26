@@ -1,5 +1,6 @@
 package com.reportingportal.config;
 
+import com.reportingportal.report.CategoryList;
 import com.reportingportal.report.ReportRegistry;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.servlet.ServletContext;
@@ -11,6 +12,7 @@ import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
 import java.util.Collections;
+import java.util.List;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -26,12 +28,17 @@ public class AppContextListener implements ServletContextListener {
 
     /** Application-scope attribute names. */
     public static final String CONFIG = "portal.config";
+    /** Pool for the portal's own tables (PORTAL user). */
     public static final String DATA_SOURCE = "portal.dataSource";
+    /** Pool for the report views (the warehouse's read-only reporting user). */
+    public static final String WAREHOUSE_DATA_SOURCE = "portal.warehouseDataSource";
     public static final String REGISTRY = "portal.registry";
+    public static final String CATEGORIES = "portal.categories";
 
     private static final Logger LOG = Logger.getLogger(AppContextListener.class.getName());
 
-    private HikariDataSource dataSource;
+    private HikariDataSource portalPool;
+    private HikariDataSource warehousePool;
 
     @Override
     public void contextInitialized(ServletContextEvent event) {
@@ -39,43 +46,54 @@ public class AppContextListener implements ServletContextListener {
             AppConfig config = AppConfig.fromEnvironment();
             LOG.info("Starting Reporting Portal with " + config);
 
-            dataSource = HikariFactory.create(config);
-            LOG.info("Connection pool started");
+            portalPool = HikariFactory.portalPool(config);
+            warehousePool = HikariFactory.warehousePool(config);
+            LOG.info("Connection pools started");
 
             // Fails startup if the Java report codes and the reports table differ.
-            ReportRegistry registry = ReportRegistry.load(dataSource);
+            ReportRegistry registry = ReportRegistry.load(portalPool);
             LOG.info("Report registry loaded: " + registry.all().size() + " reports");
+
+            // The allowed values of every "category" parameter, read once from the warehouse.
+            List<String> categories = CategoryList.load(warehousePool);
+            LOG.info("Product categories loaded: " + categories.size());
 
             ServletContext context = event.getServletContext();
             context.setAttribute(CONFIG, config);
-            context.setAttribute(DATA_SOURCE, dataSource);
+            context.setAttribute(DATA_SOURCE, portalPool);
+            context.setAttribute(WAREHOUSE_DATA_SOURCE, warehousePool);
             context.setAttribute(REGISTRY, registry);
+            context.setAttribute(CATEGORIES, categories);
         } catch (SQLException e) {
             LOG.log(Level.SEVERE, "Reporting Portal failed to start: " + e.getMessage(), e);
-            closePool();
-            throw new IllegalStateException("Could not read the portal tables", e);
+            closePools();
+            throw new IllegalStateException("Could not read the portal or warehouse tables", e);
         } catch (RuntimeException e) {
             // Throwing here makes Tomcat mark the web app as failed to start, which
             // is what we want: better no app than one without a database.
             LOG.log(Level.SEVERE, "Reporting Portal failed to start: " + e.getMessage(), e);
-            closePool();
+            closePools();
             throw e;
         }
     }
 
     @Override
     public void contextDestroyed(ServletContextEvent event) {
-        closePool();
+        closePools();
         deregisterJdbcDrivers();
         LOG.info("Reporting Portal stopped");
     }
 
-    private void closePool() {
-        if (dataSource != null) {
-            dataSource.close();
-            dataSource = null;
-            LOG.info("Connection pool closed");
+    private void closePools() {
+        if (warehousePool != null) {
+            warehousePool.close();
+            warehousePool = null;
         }
+        if (portalPool != null) {
+            portalPool.close();
+            portalPool = null;
+        }
+        LOG.info("Connection pools closed");
     }
 
     /**

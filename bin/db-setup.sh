@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Create the portal's database schema inside the warehouse's Oracle container.
-# Run from Git Bash on the host, after the warehouse is up (../retail: ./bin/up.sh).
+# Create the portal's own schema (user PORTAL) in the warehouse's Oracle database.
+# Run from Git Bash on the host while the warehouse's Oracle container is running.
 #
-#   bin/db-setup.sh            create user PORTAL, grants and synonyms, tables, seed data
-#   bin/db-setup.sh --grants   only re-apply grants and synonyms on the warehouse views
-#                              (needed after the warehouse's install.sh --reset)
-#   bin/db-setup.sh --reset    drop user PORTAL (ALL PORTAL DATA IS LOST), then full setup
+#   bin/db-setup.sh            create user PORTAL, its tables and seed data
+#   bin/db-setup.sh --reset    drop user PORTAL first (ALL PORTAL DATA IS LOST)
+#
+# This touches nothing of the warehouse: no DW object, grant or file. The portal
+# reads the report views through the warehouse's own read-only reporting user
+# (WAREHOUSE_DB_USER in .env), which the warehouse creates and maintains.
 #
 # SQL is piped into sqlplus inside the Oracle container over standard input,
-# so passwords never appear on a command line. The SYSDBA steps log in with
-# "CONNECT / AS SYSDBA": operating-system authentication, which works because
+# so passwords never appear on a command line. Creating a user needs SYSDBA:
+# "CONNECT / AS SYSDBA" uses operating-system authentication, which works because
 # the container runs as the "oracle" user in the "dba" group. No SYS password needed.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1   # stop Git Bash on Windows rewriting /paths inside docker arguments
@@ -17,7 +19,7 @@ export MSYS_NO_PATHCONV=1   # stop Git Bash on Windows rewriting /paths inside d
 cd "$(dirname "$0")/.."
 
 if [ ! -f .env ]; then
-    echo "ERROR: .env not found. Run: cp .env.example .env   (then set PORTAL_DB_PASSWORD)"
+    echo "ERROR: .env not found. Run: cp .env.example .env   (then set the passwords)"
     exit 1
 fi
 # Load settings. tr removes Windows line endings in case .env was edited in Notepad.
@@ -27,8 +29,8 @@ set +a
 
 mode="${1:-full}"
 case "$mode" in
-    full|--grants|--reset) ;;
-    *) echo "Usage: bin/db-setup.sh [--grants | --reset]"; exit 4 ;;
+    full|--reset) ;;
+    *) echo "Usage: bin/db-setup.sh [--reset]"; exit 4 ;;
 esac
 
 # Run the given SQL files as SYSDBA in the pluggable database XEPDB1.
@@ -42,7 +44,6 @@ run_as_sysdba() {
         echo "SET VERIFY OFF FEEDBACK ON"
         echo "DEFINE portal_user = ${PORTAL_DB_USER}"
         echo "DEFINE portal_password = ${PORTAL_DB_PASSWORD}"
-        echo "DEFINE dw_schema = ${WAREHOUSE_SCHEMA}"
         for file in "$@"; do cat "$file"; echo; done
         echo "EXIT"
     } | docker exec -i "$ORACLE_CONTAINER" sqlplus -s -L /nolog
@@ -60,21 +61,19 @@ run_as_portal() {
     } | docker exec -i "$ORACLE_CONTAINER" sqlplus -s -L /nolog
 }
 
-if [ "$mode" = "--grants" ]; then
-    echo "== Re-applying grants and synonyms on ${WAREHOUSE_SCHEMA}'s report views"
-    run_as_sysdba db/00_grants.sql
-    echo "Done."
-    exit 0
-fi
-
 if [ "$mode" = "--reset" ]; then
+    # Oracle cannot drop a user that has open sessions, and the running portal
+    # keeps pooled connections open. Stop it first (this repo's container only);
+    # start it again afterwards with: docker compose up -d
+    echo "== Stopping the portal container (if running)"
+    docker compose stop portal > /dev/null 2>&1 || true
     echo "== Dropping user ${PORTAL_DB_USER}"
     run_as_sysdba db/99_drop_user.sql
 fi
 
-echo "== Creating user ${PORTAL_DB_USER}, grants and synonyms (as SYSDBA)"
-if ! run_as_sysdba db/00_create_user.sql db/00_grants.sql; then
-    echo "ERROR: setup failed. If the user already exists, use --grants or --reset."
+echo "== Creating user ${PORTAL_DB_USER} (as SYSDBA)"
+if ! run_as_sysdba db/00_create_user.sql; then
+    echo "ERROR: setup failed. If the user already exists, use --reset."
     exit 1
 fi
 

@@ -26,23 +26,24 @@ public class HealthServlet extends HttpServlet {
 
     private static final Logger LOG = Logger.getLogger(HealthServlet.class.getName());
 
-    /** Proves the pool can hand out a working connection. */
+    /** Proves the portal pool can hand out a working connection. */
     private static final String DATABASE_CHECK = "SELECT 1 FROM DUAL";
 
     /**
-     * Proves the PORTAL user can still read a warehouse view. The warehouse's
-     * reset drops its views, and with them the grants; this check catches that.
+     * Proves the warehouse pool's read-only user can read a report view, e.g.
+     * that the warehouse is installed and its reporting grants are in place.
      */
     private static final String WAREHOUSE_CHECK = "SELECT COUNT(*) FROM v_rpt_weekday_orders_pivot";
 
     @Override
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
-        DataSource dataSource = (DataSource) getServletContext().getAttribute(AppContextListener.DATA_SOURCE);
+        DataSource portal = (DataSource) getServletContext().getAttribute(AppContextListener.DATA_SOURCE);
+        DataSource warehouse = (DataSource) getServletContext().getAttribute(AppContextListener.WAREHOUSE_DATA_SOURCE);
 
         long start = System.nanoTime();
-        boolean databaseUp = runsOk(dataSource, DATABASE_CHECK);
-        boolean warehouseReadable = databaseUp && runsOk(dataSource, WAREHOUSE_CHECK);
+        boolean databaseUp = runsOk(portal, DATABASE_CHECK);
+        boolean warehouseReadable = databaseUp && runsOk(warehouse, WAREHOUSE_CHECK);
         long elapsedMillis = (System.nanoTime() - start) / 1_000_000;
 
         boolean healthy = databaseUp && warehouseReadable;

@@ -22,7 +22,7 @@ Everything the warehouse facts below rely on was measured during discovery again
 Other discovery facts:
 - 27 customer states and 23 seller states; 74 categories, the longest 45 characters. Months run 2016-09 to 2018-09, and `dim_date` covers 2016-01-01 to 2019-12-31.
 - The heaviest real queries take 0.2 s or less, measured with `SET TIMING ON`. That includes an offset page of `v_rpt_repeat_purchase_gap` sorted by gap. So the portal queries the views live, with no cache.
-- The warehouse's `bin/install.sh --reset` (which its test suite runs) **drops and recreates every view, and dropping a view deletes its grants**. The portal's setup must therefore be able to re-apply grants (section d).
+- The warehouse's `bin/install.sh --reset` (which its test suite runs) **drops and recreates every view, and dropping a view deletes its grants**. Since then the warehouse has added a read-only reporting user (`dw_report`, role `DW_REPORTING`) whose grants its own install re-applies. The portal reads the views through that user (section d, and "Changes made during the build").
 - curl 8.19 on this machine sends a `Secure` cookie over plain `http://localhost` and `http://127.0.0.1` (tested with a throwaway local server). Browsers do the same for localhost. So the `Secure` flag can stay on permanently (section g).
 - This machine has no JDK, Maven or Tomcat. Docker Desktop 29.6 has 8 GB and 16 CPUs. Build and run options are in section l and question 1.
 
@@ -35,7 +35,7 @@ Other discovery facts:
 3. Form values are validated on the server, then bound into `PreparedStatement` parameters. Sort columns come from a per-report whitelist.
 4. Three reports also have a chart page (Chart.js), fed by a JSON endpoint that applies exactly the same role check and validation.
 5. Any report can be scheduled as a daily CSV export. A background thread inside the web app runs due schedules, writes the file, and records each run in the database. Users list and download their past exports.
-6. The portal has its own Oracle schema `PORTAL` (users, roles, report access, schedules, runs) in the same database as the warehouse. It has read-only `SELECT` on the 12 views and nothing else in `DW`.
+6. The portal has its own Oracle schema `PORTAL` (users, roles, report access, schedules, runs) in the same database as the warehouse. Report data is read through the warehouse's read-only reporting user `dw_report`, which can `SELECT` the 12 views and nothing else. Each login has its own connection pool.
 7. Security is plain Servlet API code: an authentication filter, BCrypt passwords, session-fixation protection, `HttpOnly`/`Secure`/`SameSite` cookies, CSRF tokens on every POST, and `<c:out>` escaping in every JSP.
 8. Tomcat runs in Docker, on the warehouse's Docker network, so the whole system starts with `docker compose`.
 
@@ -62,19 +62,19 @@ Other discovery facts:
 │        │          ExportScheduler ──┘  (1 background thread, wakes every 30 s)             │
 │        │                │ writes CSV: .tmp file, then rename                               │
 │        ▼                ▼                                                                  │
-│  HikariCP pool       /exports ───── bind mount ─────► ./exports on the host (gitignored)   │
-│  (5 connections)                                                                           │
-│  AppContextListener creates the pool and scheduler at startup and closes both at shutdown  │
-└──────┬─────────────────────────────────────────────────────────────────────────────────────┘
-       │ JDBC thin: jdbc:oracle:thin:@//oracle:1521/XEPDB1 as user PORTAL
-       │ (Docker network retail_default, owned by ../retail)
-       ▼
+│  HikariCP pools:     /exports ───── bind mount ─────► ./exports on the host (gitignored)   │
+│   "portal"    (2)  logins, roles, schedules, runs                                          │
+│   "warehouse" (5)  every report query, read-only                                           │
+│  AppContextListener creates the pools and scheduler at startup, closes them at shutdown    │
+└──────┬──────────────────────────────┬──────────────────────────────────────────────────────┘
+       │ JDBC thin as PORTAL          │ JDBC thin as dw_report (CURRENT_SCHEMA = DW)
+       │ oracle:1521/XEPDB1 on Docker network retail_default (owned by ../retail)
+       ▼                              ▼
 ┌──────────────── Oracle 21c XE, container retail-oracle-1, PDB XEPDB1 ─────────────────────┐
 │  schema PORTAL  users  roles  user_roles  reports  report_roles                           │
-│                 export_schedules  export_runs                                             │
-│                 12 private synonyms v_rpt_*  ──────────┐                                  │
-│  schema DW      fact_sales, dim_* (not visible to PORTAL)                                 │
-│                 12 views v_rpt_*  ◄────────────────────┘  GRANT SELECT to PORTAL, views only │
+│                 export_schedules  export_runs          (dw_report cannot see these)       │
+│  schema DW      fact_sales, dim_* (visible to neither login)                              │
+│                 12 views v_rpt_*  ◄── SELECT via role DW_REPORTING, held by dw_report     │
 └───────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -131,17 +131,15 @@ Other discovery facts:
 
 A separate database user `PORTAL` in the same PDB (`XEPDB1`) as the warehouse.
 - **Why the same database:** there is a single XE instance, and a second database would need a database link to read the views.
-- **Why a separate schema:** the portal's tables have a different owner, lifecycle and privileges from the warehouse. `PORTAL` can read the 12 views and cannot touch `DW`'s tables at all.
+- **Why a separate schema:** the portal's tables have a different owner, lifecycle and privileges from the warehouse. `PORTAL` has no access to anything in `DW`.
+- **How report data is read:** through the warehouse's own read-only user `dw_report` (from the warehouse's `.env`). It holds role `DW_REPORTING`, which can only `SELECT` the 12 views. The warehouse creates the user and re-grants the role whenever it reinstalls its views, so the portal never changes anything of the warehouse's.
 
 **Setup: `bin/db-setup.sh`**, run from Git Bash. It pipes SQL into `sqlplus` inside the warehouse's Oracle container with `docker exec -i retail-oracle-1 sqlplus -s /nolog`. Passwords go over stdin, never on a command line.
 1. As `SYSDBA` (`CONNECT / AS SYSDBA`), which uses OS authentication. The container runs as OS user `oracle` in group `dba`, verified in discovery, so no SYS password is needed.
    - `CREATE USER portal ... QUOTA 50M ON users`
    - `GRANT CREATE SESSION, CREATE TABLE, CREATE SEQUENCE TO portal`. `CREATE SEQUENCE` is needed because each identity column creates a sequence behind the scenes.
-   - 12 explicit `GRANT SELECT ON dw.v_rpt_x TO portal` lines. Explicit lines rather than a loop, so the least-privilege list is readable.
-   - 12 `CREATE OR REPLACE SYNONYM portal.v_rpt_x FOR dw.v_rpt_x`, so Java code never names the warehouse schema.
 2. As `PORTAL`: `db/01_schema.sql` (tables), then `db/02_seed.sql` (roles, users, reports, report_roles).
-3. `bin/db-setup.sh --grants` repeats only the grants and synonyms. Run it after the warehouse's `install.sh --reset`, which drops its views and with them the grants.
-4. `bin/db-setup.sh --reset` runs `DROP USER portal CASCADE` first.
+3. `bin/db-setup.sh --reset` stops the portal container (Oracle cannot drop a user with open sessions), then runs `DROP USER portal CASCADE` first.
 
 **Tables.** Identity columns are used here, where the warehouse uses sequences. The warehouse needed sequences to insert `-1 Unknown` rows. The portal has no such rows, and `GENERATED ALWAYS AS IDENTITY` is the simpler modern choice. All `TIMESTAMP` columns hold **UTC** (section h).
 
@@ -242,7 +240,7 @@ Why role assignments are rows:
 Consistency check: at startup the registry compares the report codes in Java with the rows in `reports`. If they differ in either direction, the web app fails to start, and the Tomcat log names the missing codes. A report can therefore never exist without an access rule.
 
 **A definition contains:**
-- code, title, the business question (the warehouse's own comment), and the view (synonym) name;
+- code, title, the business question (the warehouse's own comment), and the view name (unqualified: the warehouse pool's sessions have `CURRENT_SCHEMA = DW`);
 - the column list, with a display label and a type (TEXT, INTEGER, YEAR, MONEY, PERCENT, DATE, MONTH) used for formatting;
 - parameters, each with a name, label, type, required flag, default, limits and SQL fragment;
 - cross-field rules (from ≤ to);
@@ -440,8 +438,8 @@ OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
 Unknown codes get 404. Report codes are not secret (they are in the README), so 403 vs 404 reveals nothing useful. **Other users' export runs get 404, not 403**, so run IDs cannot be probed to find out which ones exist.
 
 **Health page.** `/health` is public so a monitor can call it. It shows only:
-- `database: UP` (`SELECT 1 FROM DUAL` through the pool);
-- `warehouse views: READABLE` (`SELECT COUNT(*) FROM v_rpt_weekday_orders_pivot`, which catches lost grants);
+- `database: UP` (`SELECT 1 FROM DUAL` through the portal pool);
+- `warehouse views: READABLE` (`SELECT COUNT(*) FROM v_rpt_weekday_orders_pivot` through the warehouse pool, which catches a missing warehouse or missing reporting grants);
 - the time taken.
 
 It never shows versions, URLs or error text. It returns HTTP 503 if either check fails.
@@ -501,7 +499,7 @@ It never shows versions, URLs or error text. It returns HTTP 503 if either check
 - It runs only while Tomcat runs. A redeploy interrupts a running export: that run is marked FAILED at the next startup and is not retried.
 - Missed runs collapse into a single catch-up run, and there is no calendar beyond "daily at HH:MM".
 - One thread means one export at a time. A slow export delays the others; with these view sizes that means seconds.
-- It shares the connection pool and CPU with web users. An export holds one of the 5 connections while it runs.
+- It shares the warehouse connection pool and CPU with web users. An export holds one of the 5 warehouse connections while it runs.
 - There is no alerting and no retry policy: a failure is visible only in the exports list and the log.
 - With **two Tomcat instances**, the claim `UPDATE` still prevents double runs. But the startup clean-up of `RUNNING` rows would wrongly fail the other instance's in-flight export. That cleanup is only correct for the single instance this project runs.
 - `DBMS_SCHEDULER` would run inside the database, but it would write files on the database server with `UTL_FILE`, where Tomcat could not serve them without a shared volume.
@@ -543,33 +541,36 @@ It never shows versions, URLs or error text. It returns HTTP 503 if either check
 
 The web app reads **environment variables only**, through `AppConfig`. Docker Compose loads them from `.env` with `env_file`, so no credential is ever inside the WAR or the image.
 - I chose environment variables over a properties file outside the WAR because Compose already passes them, there is no file to mount, and the same WAR runs anywhere unchanged.
-- A missing required variable stops the deployment with `Missing environment variable PORTAL_DB_PASSWORD`, rather than failing later at the first query.
+- A missing required variable stops the deployment with `missing environment variable PORTAL_DB_PASSWORD`, rather than failing later at the first query.
 
 `.env.example` (committed; `.env` is gitignored):
 ```bash
-# Copy this file to .env and set the password. .env is gitignored.
-# No comments on the same line as a value (Docker would treat them as part of the value).
-
 # --- read by the web app ---
-PORTAL_DB_URL=jdbc:oracle:thin:@//oracle:1521/XEPDB1
+DB_URL=jdbc:oracle:thin:@//oracle:1521/XEPDB1
 PORTAL_DB_USER=portal
 PORTAL_DB_PASSWORD=ChangeMePortal1
-PORTAL_DB_POOL_SIZE=5
+PORTAL_DB_POOL_SIZE=2
+# the warehouse's read-only reporting user: copy REPORT_USER / REPORT_PASSWORD from ../retail/.env
+WAREHOUSE_DB_USER=dw_report
+WAREHOUSE_DB_PASSWORD=ChangeMeReport1
+WAREHOUSE_SCHEMA=DW
+WAREHOUSE_DB_POOL_SIZE=5
 PORTAL_EXPORT_DIR=/exports
 PORTAL_TIME_ZONE=UTC
 PORTAL_SCHEDULER_INTERVAL_SECONDS=30
 
 # --- read only by bin/db-setup.sh and docker-compose.yml ---
 ORACLE_CONTAINER=retail-oracle-1
-WAREHOUSE_SCHEMA=DW
 WAREHOUSE_NETWORK=retail_default
 ```
+(The committed file has a comment above each setting.)
 
 **HikariCP settings, and why.**
-- `maximumPoolSize=5` and `minimumIdle=5`: a fixed-size pool, as Hikari's documentation recommends. XE uses at most 2 CPU threads, and the usual starting formula is connections ≈ cores × 2 + effective disks, about 5. More connections than the database can execute in parallel only adds queueing inside Oracle.
+- **Two pools, two users.** `portal` (PORTAL, 2 connections) serves logins and schedule bookkeeping: tiny indexed lookups. `warehouse` (`dw_report`, 5 connections) runs every report query. Report SQL therefore runs as a user that cannot see the `users` table or the password hashes, or change anything.
+- Warehouse pool `maximumPoolSize=5`, `minimumIdle=5`: a fixed-size pool, as Hikari's documentation recommends. XE uses at most 2 CPU threads, and the usual starting formula is connections ≈ cores × 2 + effective disks, about 5. More connections than the database can execute in parallel only adds queueing inside Oracle.
+- Warehouse pool `connectionInitSql = ALTER SESSION SET CURRENT_SCHEMA = DW`, so SQL says `v_rpt_monthly_revenue` and the schema name lives only in `WAREHOUSE_SCHEMA`. This changes name lookup, not privileges. The value is checked against `^[A-Za-z][A-Za-z0-9_]{0,29}$` because it is pasted into SQL.
 - `connectionTimeout=5000`: a user waits at most 5 s for a free connection, then gets an error page instead of hanging.
 - `maxLifetime=1800000`: connections are replaced every 30 minutes, before any firewall or database idle timeout could cut them.
-- `poolName=portal`.
 - Every statement also gets `setQueryTimeout(30)`, so one runaway query cannot hold a connection forever.
 
 `docker-compose.yml`, for the portal only. It joins the warehouse's existing network:
@@ -632,12 +633,11 @@ portal/                                   (git repo "reporting-portal")
 ├── Dockerfile                            stage 1 maven:3.9-eclipse-temurin-17 → mvn package; stage 2 tomcat:10.1-jdk17-temurin
 ├── docker-compose.yml
 ├── bin/
-│   ├── db-setup.sh                       create PORTAL user, grants, synonyms, schema, seed   (--grants, --reset)
+│   ├── db-setup.sh                       create PORTAL user, schema, seed   (--reset)
 │   ├── mvn.sh                            run Maven in a container (cached ~/.m2 volume), e.g. bin/mvn.sh test
 │   └── hash-password.sh                  print a BCrypt hash for a password read from stdin
 ├── db/
 │   ├── 00_create_user.sql                as SYSDBA: user PORTAL and its system privileges
-│   ├── 00_grants.sql                     as SYSDBA: SELECT on the 12 views + synonyms (re-runnable)
 │   ├── 01_schema.sql                     as PORTAL: tables
 │   ├── 02_seed.sql                       as PORTAL: roles, 3 users, 12 reports, access rules
 │   └── 99_drop_user.sql                  as SYSDBA: used by --reset
@@ -719,7 +719,7 @@ At every checkpoint I show real output: command output, curl output or test outp
 **Risks:**
 - **Coupling to the warehouse's Docker setup.** The portal expects the container `retail-oracle-1` and the network `retail_default`. Both are configurable in `.env`. If the warehouse is not running, `docker compose up` fails at once with "network retail_default … not found".
 - **Warehouse resets.**
-  - `install.sh --reset` (run by the warehouse tests) drops the views, and their grants with them. Fix: `bin/db-setup.sh --grants`. `/health` shows `NOT READABLE` until then.
+  - `install.sh --reset` (run by the warehouse tests) drops and recreates the views. The warehouse's own install re-grants them to `DW_REPORTING`, so the portal needs nothing. `/health` shows `NOT READABLE` while the views are missing.
   - `docker compose down -v` in `retail` deletes the database volume, and with it the `PORTAL` schema. Fix: `bin/db-setup.sh`.
 - **Live queries.** Each page view re-runs its view's SQL. That was measured at 0.2 s or less, and it is fine for a demo. At real scale, the views would become materialized views refreshed by the nightly load.
 - **Secure cookie over plain HTTP.** This works only for `localhost` and `127.0.0.1`. Opening the portal from another machine over `http://<LAN IP>` would make login appear to fail. That is intended, since the port is bound to 127.0.0.1 anyway.
@@ -739,6 +739,10 @@ At every checkpoint I show real output: command output, curl output or test outp
   - AuthFilter copies `currentUser` into request scope, and CsrfFilter copies `csrfToken` into request scope. Pages read both from there.
   - So `/health`, the error page and static files never hand out a session cookie.
 - **M2:** Tomcat 10.1 ships Expression Language 5.0, which finds JavaBean getters (`getDisplayName()`) but not record accessors (`displayName()`). Records are only supported from EL 6.0 (Tomcat 11). So objects that JSPs read, such as `AuthenticatedUser`, are ordinary classes with getters. Records are still used where no JSP reads them (`AppConfig`, `UserDao.StoredUser`).
+- **Before M4: report data is read through the warehouse's read-only user.** The warehouse added `dw_report` (role `DW_REPORTING`, SELECT on the 12 views only), and the warehouse repo is to be treated as read-only. The portal no longer grants itself access to `DW` views:
+  - `db/00_grants.sql` and `bin/db-setup.sh --grants` were removed. `--reset` cleaned up the old grants, so PORTAL now has 0 privileges on `DW` objects.
+  - There are two pools: `portal` (PORTAL) and `warehouse` (`dw_report`, `CURRENT_SCHEMA = DW`). Report SQL runs as a user that cannot read the portal's tables.
+  - The only thing the portal still does in the warehouse's database is create its own separate `PORTAL` schema (as SYSDBA through `docker exec`), because the brief requires one and only SYSDBA can create a user.
 - **M3:** there is a column type `YEAR` (no thousands separator, so 2017 is not shown as "2,017"). The planned `DECIMAL` type was dropped because no column needs it.
 
 ### Decisions (approved 2026-09-26)
