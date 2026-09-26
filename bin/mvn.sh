@@ -9,7 +9,11 @@
 set -euo pipefail
 export MSYS_NO_PATHCONV=1   # stop Git Bash on Windows rewriting /paths inside docker arguments
 
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+# The repo folder, as Docker must see it. In Git Bash, `pwd -W` gives the Windows form
+# (C:/Users/...): plain `pwd` can return an MSYS-only path such as /tmp/..., which
+# Docker would look up inside its Linux VM and mount an empty folder. Elsewhere,
+# `pwd -W` does not exist and plain `pwd` is used.
+ROOT="$(cd "$(dirname "$0")/.." && (pwd -W 2>/dev/null || pwd))"
 
 # -i passes standard input through (bin/hash-password.sh pipes a password in).
 docker run --rm -i \
