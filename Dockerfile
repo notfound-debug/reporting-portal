@@ -8,6 +8,8 @@ WORKDIR /build
 COPY pom.xml .
 RUN mvn -B -q dependency:go-offline
 COPY src ./src
+# The unit tests check the Java report codes against the seed data in db/02_seed.sql.
+COPY db ./db
 RUN mvn -B package
 
 # ---- Stage 2: run the WAR on Tomcat 10.1 (Jakarta EE 10: Servlet 6.0, JSP 3.1) ----

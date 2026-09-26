@@ -147,7 +147,8 @@ public class ExportServlet extends HttpServlet {
                 validation.getParams().toQueryString(), runTime, nextRun);
         LOG.info("Schedule " + id + " created: user=" + user.getUsername() + " report=" + report.getCode()
                 + " daily at " + runTime + " " + config.timeZone());
-        response.sendRedirect(request.getContextPath() + "/exports?created");
+        // The new id in the URL lets a script (tests/smoke.sh) find its schedule; the page only shows a fixed message.
+        response.sendRedirect(request.getContextPath() + "/exports?created=" + id);
     }
 
     private void changeSchedule(HttpServletRequest request, HttpServletResponse response,

@@ -43,7 +43,7 @@
                         </thead>
                         <tbody>
                         <c:forEach var="s" items="${schedules}">
-                            <tr>
+                            <tr data-schedule="${s.scheduleId}">
                                 <td class="num"><c:out value="${s.scheduleId}"/></td>
                                 <td><c:out value="${reportTitles[s.reportCode]}"/></td>
                                 <c:if test="${showOwner}"><td><c:out value="${s.ownerUsername}"/></td></c:if>
@@ -104,7 +104,8 @@
                         </thead>
                         <tbody>
                         <c:forEach var="r" items="${runs}">
-                            <tr>
+                            <%-- data- attributes: stable hooks for tests/smoke.sh, independent of the layout --%>
+                            <tr data-run="${r.runId}" data-schedule="${r.scheduleId}" data-status="${r.status}">
                                 <td class="num"><c:out value="${r.runId}"/></td>
                                 <td class="num"><c:out value="${r.scheduleId}"/></td>
                                 <td><c:out value="${reportTitles[r.reportCode]}"/></td>
