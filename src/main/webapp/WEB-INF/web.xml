@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
   Deployment descriptor. Servlets and the listener are registered with annotations
-  (@WebServlet, @WebListener). This file holds what annotations cannot express well.
+  (@WebServlet, @WebListener). This file holds what annotations cannot express well:
+  the ORDER of the filters, session and cookie settings, error pages and JSP rules.
 -->
 <web-app xmlns="https://jakarta.ee/xml/ns/jakartaee"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -9,6 +10,93 @@
          version="6.0">
 
     <display-name>Reporting Portal</display-name>
+
+    <!-- Form fields and pages are UTF-8 (Tomcat would otherwise read form bodies as ISO-8859-1). -->
+    <request-character-encoding>UTF-8</request-character-encoding>
+    <response-character-encoding>UTF-8</response-character-encoding>
+
+    <!-- ===================== Filters =====================
+         They run in the order of the <filter-mapping> elements below. @WebFilter
+         annotations have no guaranteed order, which is why filters are declared here.
+           1. SecurityHeadersFilter  headers on every response, including the login page
+           2. AuthFilter             no session user -> redirect to /login (401 for /api/*)
+           3. CsrfFilter             every POST must carry the session's token -->
+    <filter>
+        <filter-name>SecurityHeadersFilter</filter-name>
+        <filter-class>com.reportingportal.auth.SecurityHeadersFilter</filter-class>
+    </filter>
+    <filter>
+        <filter-name>AuthFilter</filter-name>
+        <filter-class>com.reportingportal.auth.AuthFilter</filter-class>
+    </filter>
+    <filter>
+        <filter-name>CsrfFilter</filter-name>
+        <filter-class>com.reportingportal.auth.CsrfFilter</filter-class>
+    </filter>
+
+    <filter-mapping>
+        <filter-name>SecurityHeadersFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+    <filter-mapping>
+        <filter-name>AuthFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+    <filter-mapping>
+        <filter-name>CsrfFilter</filter-name>
+        <url-pattern>/*</url-pattern>
+    </filter-mapping>
+
+    <!-- ===================== Session ===================== -->
+    <session-config>
+        <!-- Minutes of inactivity before the session expires. -->
+        <session-timeout>30</session-timeout>
+        <cookie-config>
+            <!-- JavaScript cannot read JSESSIONID, so an XSS bug could not steal the session. -->
+            <http-only>true</http-only>
+            <!-- Only sent over HTTPS. Browsers and curl treat http://localhost as secure, so local use works. -->
+            <secure>true</secure>
+            <!-- Not sent on cross-site POSTs (a second CSRF defence). Lax, not Strict, so following a
+                 link to the portal from email or chat does not look like being logged out. -->
+            <attribute>
+                <attribute-name>SameSite</attribute-name>
+                <attribute-value>Lax</attribute-value>
+            </attribute>
+        </cookie-config>
+        <!-- Cookies only: never put ;jsessionid=... into URLs, where it leaks into logs and Referer headers. -->
+        <tracking-mode>COOKIE</tracking-mode>
+    </session-config>
+
+    <!-- ===================== Error pages =====================
+         One page, fixed messages, never a stack trace (the exception goes to the Tomcat log). -->
+    <error-page>
+        <error-code>400</error-code>
+        <location>/WEB-INF/jsp/error.jsp</location>
+    </error-page>
+    <error-page>
+        <error-code>403</error-code>
+        <location>/WEB-INF/jsp/error.jsp</location>
+    </error-page>
+    <error-page>
+        <error-code>404</error-code>
+        <location>/WEB-INF/jsp/error.jsp</location>
+    </error-page>
+    <error-page>
+        <error-code>405</error-code>
+        <location>/WEB-INF/jsp/error.jsp</location>
+    </error-page>
+    <error-page>
+        <error-code>500</error-code>
+        <location>/WEB-INF/jsp/error.jsp</location>
+    </error-page>
+    <error-page>
+        <exception-type>java.lang.Throwable</exception-type>
+        <location>/WEB-INF/jsp/error.jsp</location>
+    </error-page>
+
+    <welcome-file-list>
+        <welcome-file>index.jsp</welcome-file>
+    </welcome-file-list>
 
     <jsp-config>
         <jsp-property-group>

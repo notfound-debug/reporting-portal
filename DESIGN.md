@@ -733,6 +733,13 @@ At every checkpoint I show real output: command output, curl output or test outp
 - **CSV and Excel:** UTF-8 without a BOM. Excel may misread accented characters, but Olist city names are almost all plain ASCII.
 - **Chart.js from a CDN.** Chart pages need internet access. Everything else works offline.
 
+### Changes made during the build
+- **M1:** the JSTL API jar pulled `jakarta.el-api` into `WEB-INF/lib`. Tomcat already provides that API, so the pom excludes it.
+- **M1:** JSPs create an HTTP session by default. Every JSP now declares `session="false"`, and **LoginServlet is the only code that creates a session**.
+  - AuthFilter copies `currentUser` into request scope, and CsrfFilter copies `csrfToken` into request scope. Pages read both from there.
+  - So `/health`, the error page and static files never hand out a session cookie.
+- **M2:** Tomcat 10.1 ships Expression Language 5.0, which finds JavaBean getters (`getDisplayName()`) but not record accessors (`displayName()`). Records are only supported from EL 6.0 (Tomcat 11). So objects that JSPs read, such as `AuthenticatedUser`, are ordinary classes with getters. Records are still used where no JSP reads them (`AppConfig`, `UserDao.StoredUser`).
+
 ### Decisions (approved 2026-09-26)
 1. Build and test in Docker only (`Dockerfile` stage 1 and `bin/mvn.sh`). Nothing is installed on Windows.
 2. Libraries as listed in section l, including the GlassFish JSTL implementation, `slf4j-jdk14`, `at.favre.lib:bcrypt` and `exec-maven-plugin`. JSON comes from a hand-written `JsonWriter`.

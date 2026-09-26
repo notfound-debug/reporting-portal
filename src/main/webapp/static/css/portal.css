@@ -1,0 +1,104 @@
+/* Reporting Portal: one small stylesheet, no framework. */
+
+:root {
+    --bg: #f5f6f8;
+    --surface: #ffffff;
+    --text: #1d2330;
+    --muted: #5f6b7a;
+    --border: #d9dde3;
+    --accent: #1f5f99;
+    --accent-dark: #174a78;
+    --error-bg: #fdecec;
+    --error-text: #9b1c1c;
+    --notice-bg: #e8f3ec;
+    --notice-text: #1e6b3a;
+    --radius: 6px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+a { color: var(--accent); }
+
+/* ---- top bar ---- */
+.topbar {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding: 10px 24px;
+    background: var(--accent-dark);
+    color: #fff;
+}
+.topbar a { color: #fff; text-decoration: none; }
+.brand { font-weight: 600; font-size: 17px; }
+.nav { display: flex; gap: 16px; }
+.nav a:hover { text-decoration: underline; }
+.who { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+.role {
+    font-size: 11px;
+    letter-spacing: .04em;
+    padding: 1px 6px;
+    margin-left: 4px;
+    border: 1px solid rgba(255, 255, 255, .5);
+    border-radius: 10px;
+}
+.inline { display: inline; margin: 0; }
+.link-button {
+    background: none;
+    border: 0;
+    padding: 0;
+    color: #fff;
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
+
+/* ---- page ---- */
+.main { max-width: 1200px; margin: 24px auto; padding: 0 16px; }
+.card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+}
+h1 { font-size: 22px; margin: 0 0 12px; }
+h2 { font-size: 18px; margin: 0 0 10px; }
+.muted { color: var(--muted); }
+
+.error, .notice { padding: 8px 12px; border-radius: var(--radius); }
+.error { background: var(--error-bg); color: var(--error-text); }
+.notice { background: var(--notice-bg); color: var(--notice-text); }
+.field-error { color: var(--error-text); font-size: 13px; }
+
+/* ---- forms ---- */
+label { display: block; font-weight: 600; margin: 10px 0 4px; }
+input, select {
+    font: inherit;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: #fff;
+}
+button, .button {
+    display: inline-block;
+    font: inherit;
+    padding: 7px 16px;
+    margin-top: 12px;
+    border: 0;
+    border-radius: var(--radius);
+    background: var(--accent);
+    color: #fff;
+    cursor: pointer;
+    text-decoration: none;
+}
+button:hover, .button:hover { background: var(--accent-dark); }
+
+.login { max-width: 360px; margin: 60px auto; }
+.login input { width: 100%; }
