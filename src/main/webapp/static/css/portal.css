@@ -102,3 +102,15 @@ button:hover, .button:hover { background: var(--accent-dark); }
 
 .login { max-width: 360px; margin: 60px auto; }
 .login input { width: 100%; }
+
+/* ---- report list ---- */
+.report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 16px;
+}
+.report-card { margin: 0; }
+.report-card h2 a { text-decoration: none; }
+.report-card h2 a:hover { text-decoration: underline; }
+.report-links { margin-bottom: 0; }
+.code { float: right; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }

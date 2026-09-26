@@ -1,5 +1,6 @@
 package com.reportingportal.config;
 
+import com.reportingportal.report.ReportRegistry;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.servlet.ServletContext;
 import jakarta.servlet.ServletContextEvent;
@@ -26,6 +27,7 @@ public class AppContextListener implements ServletContextListener {
     /** Application-scope attribute names. */
     public static final String CONFIG = "portal.config";
     public static final String DATA_SOURCE = "portal.dataSource";
+    public static final String REGISTRY = "portal.registry";
 
     private static final Logger LOG = Logger.getLogger(AppContextListener.class.getName());
 
@@ -38,11 +40,20 @@ public class AppContextListener implements ServletContextListener {
             LOG.info("Starting Reporting Portal with " + config);
 
             dataSource = HikariFactory.create(config);
+            LOG.info("Connection pool started");
+
+            // Fails startup if the Java report codes and the reports table differ.
+            ReportRegistry registry = ReportRegistry.load(dataSource);
+            LOG.info("Report registry loaded: " + registry.all().size() + " reports");
 
             ServletContext context = event.getServletContext();
             context.setAttribute(CONFIG, config);
             context.setAttribute(DATA_SOURCE, dataSource);
-            LOG.info("Connection pool started");
+            context.setAttribute(REGISTRY, registry);
+        } catch (SQLException e) {
+            LOG.log(Level.SEVERE, "Reporting Portal failed to start: " + e.getMessage(), e);
+            closePool();
+            throw new IllegalStateException("Could not read the portal tables", e);
         } catch (RuntimeException e) {
             // Throwing here makes Tomcat mark the web app as failed to start, which
             // is what we want: better no app than one without a database.

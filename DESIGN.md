@@ -243,7 +243,7 @@ Consistency check: at startup the registry compares the report codes in Java wit
 
 **A definition contains:**
 - code, title, the business question (the warehouse's own comment), and the view (synonym) name;
-- the column list, with a display label and a type (TEXT, INTEGER, DECIMAL, MONEY, PERCENT, DATE, MONTH) used for formatting;
+- the column list, with a display label and a type (TEXT, INTEGER, YEAR, MONEY, PERCENT, DATE, MONTH) used for formatting;
 - parameters, each with a name, label, type, required flag, default, limits and SQL fragment;
 - cross-field rules (from ≤ to);
 - the sortable columns (the whitelist), the default sort, and tie-breaker columns for stable paging;
@@ -739,6 +739,7 @@ At every checkpoint I show real output: command output, curl output or test outp
   - AuthFilter copies `currentUser` into request scope, and CsrfFilter copies `csrfToken` into request scope. Pages read both from there.
   - So `/health`, the error page and static files never hand out a session cookie.
 - **M2:** Tomcat 10.1 ships Expression Language 5.0, which finds JavaBean getters (`getDisplayName()`) but not record accessors (`displayName()`). Records are only supported from EL 6.0 (Tomcat 11). So objects that JSPs read, such as `AuthenticatedUser`, are ordinary classes with getters. Records are still used where no JSP reads them (`AppConfig`, `UserDao.StoredUser`).
+- **M3:** there is a column type `YEAR` (no thousands separator, so 2017 is not shown as "2,017"). The planned `DECIMAL` type was dropped because no column needs it.
 
 ### Decisions (approved 2026-09-26)
 1. Build and test in Docker only (`Dockerfile` stage 1 and `bin/mvn.sh`). Nothing is installed on Windows.
