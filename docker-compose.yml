@@ -1,0 +1,22 @@
+# One container: Tomcat 10.1 running the portal WAR.
+# The database is the warehouse's Oracle container (../retail). This service joins
+# that project's Docker network, so it reaches the database as oracle:1521.
+# Start the warehouse first (../retail: ./bin/up.sh), then: docker compose up -d --build
+
+services:
+  portal:
+    build: .
+    env_file: .env                           # PORTAL_* settings, including the database password
+    environment:
+      CATALINA_OPTS: "-Duser.timezone=UTC"   # every TIMESTAMP the app writes is UTC
+    ports:
+      - "127.0.0.1:8080:8080"                # reachable from this PC only
+    volumes:
+      - ./exports:/exports                   # scheduled CSV exports, kept on the host
+    networks:
+      - warehouse
+
+networks:
+  warehouse:
+    external: true                           # created by the warehouse's docker compose, not by this one
+    name: ${WAREHOUSE_NETWORK:-retail_default}

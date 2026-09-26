@@ -1,0 +1,16 @@
+# Credentials: never commit. Copy .env.example to .env instead.
+.env
+
+# Maven build output
+target/
+
+# Scheduled CSV exports written by the running portal
+exports/
+
+# Personal interview-preparation notes: kept locally, never published.
+DEFENSE.md
+
+# IDE files
+.idea/
+*.iml
+.vscode/

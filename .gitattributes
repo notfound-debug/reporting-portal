@@ -1,0 +1,4 @@
+# Keep LF line endings in every text file, on every OS. Shell scripts in
+# particular must be LF, or Bash inside Linux containers fails with
+# "$'\r': command not found" after a checkout on Windows.
+* text=auto eol=lf
