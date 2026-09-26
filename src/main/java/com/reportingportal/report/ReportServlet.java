@@ -14,7 +14,6 @@ import java.sql.SQLException;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Logger;
 
 /**
  * GET /reports/{code}: a report's form and one page of its results.
@@ -28,8 +27,6 @@ import java.util.logging.Logger;
  */
 @WebServlet("/reports/*")
 public class ReportServlet extends HttpServlet {
-
-    private static final Logger LOG = Logger.getLogger(ReportServlet.class.getName());
 
     private static final String VIEW = "/WEB-INF/jsp/report.jsp";
 
@@ -49,7 +46,7 @@ public class ReportServlet extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         // 1. Which report? "/reports/monthly_revenue" gives path info "/monthly_revenue".
-        ReportDefinition report = findReport(registry, request.getPathInfo());
+        ReportDefinition report = ReportRequests.findReport(registry, request.getPathInfo());
         if (report == null) {
             response.sendError(HttpServletResponse.SC_NOT_FOUND);
             return;
@@ -57,9 +54,11 @@ public class ReportServlet extends HttpServlet {
 
         // 2. May this user see it? Checked on the server for every request,
         //    whatever the menu showed.
-        AuthenticatedUser user = (AuthenticatedUser) request.getAttribute(AuthenticatedUser.REQUEST_ATTRIBUTE);
+        AuthenticatedUser user = ReportRequests.currentUser(request);
         if (!AccessPolicy.canView(user, report)) {
-            refuse(request, response, user, report);
+            ReportRequests.logDenied(user, report, "page");
+            request.setAttribute("errorMessage", "You do not have access to this report.");
+            response.sendError(HttpServletResponse.SC_FORBIDDEN);
             return;
         }
 
@@ -97,22 +96,6 @@ public class ReportServlet extends HttpServlet {
             request.setAttribute("nextLink", params.toQueryStringWith(Map.of(ParamValidator.PAGE, String.valueOf(params.getPage() + 1))));
         }
         request.getRequestDispatcher(VIEW).forward(request, response);
-    }
-
-    /** The report for a path like "/monthly_revenue", or null. Shared with the chart and JSON servlets. */
-    static ReportDefinition findReport(ReportRegistry registry, String pathInfo) {
-        if (pathInfo == null || pathInfo.length() < 2) {
-            return null;
-        }
-        return registry.find(pathInfo.substring(1)).orElse(null);
-    }
-
-    /** 403 with a fixed message; the attempt is logged. Shared with the chart and JSON servlets. */
-    static void refuse(HttpServletRequest request, HttpServletResponse response,
-                       AuthenticatedUser user, ReportDefinition report) throws IOException {
-        LOG.warning("Access denied: user=" + user.getUsername() + " report=" + report.getCode());
-        request.setAttribute("errorMessage", "You do not have access to this report.");
-        response.sendError(HttpServletResponse.SC_FORBIDDEN);
     }
 
     /**

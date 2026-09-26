@@ -15,6 +15,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><c:out value="${title}"/> · Reporting Portal</title>
     <link rel="stylesheet" href="<c:url value='/static/css/portal.css'/>">
+    <%-- No favicon: an empty inline icon stops the browser requesting /favicon.ico (a 404). --%>
+    <link rel="icon" href="data:,">
 </head>
 <body>
 <header class="topbar">

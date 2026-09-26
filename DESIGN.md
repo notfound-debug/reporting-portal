@@ -518,7 +518,7 @@ It never shows versions, URLs or error text. It returns HTTP 503 if either check
 **JSON endpoint contract: `GET /api/reports/{code}?<same parameters as the report form>`**
 - The same `AccessPolicy.canView` and the same `ParamValidator` as the HTML page, in the same order (404, then 403, then 400).
 - `ReportQuery.forChart` has no paging and returns at most 1,000 rows. Row-limit reports use their own `top_n`.
-- Every response is `Content-Type: application/json; charset=UTF-8` with `Cache-Control: no-store`. Methods other than GET get 405.
+- Every response is `Content-Type: application/json; charset=UTF-8` with `Cache-Control: no-store`. Only GET is implemented. Any other method is first stopped by CsrfFilter (403, no token), and with a valid token HttpServlet answers 405.
 
 ```json
 200  {"report":"monthly_revenue",
@@ -526,7 +526,7 @@ It never shows versions, URLs or error text. It returns HTTP 503 if either check
       "columns":[{"name":"month_start","label":"Month","type":"MONTH"},
                  {"name":"revenue","label":"Revenue (R$)","type":"MONEY"}, ...],
       "rows":[["2017-01",120312.87, ...], ["2017-02",247303.02, ...]],
-      "chart":{"type":"line","labelColumn":"month_start","series":["revenue"],"stacked":false},
+      "chart":{"type":"line","labelColumn":"month_start","series":["revenue"],"stacked":false,"horizontal":false},
       "truncated":false}
 400  {"errors":{"to_month":"To month must not be before From month."}}
 401  {"error":"not_authenticated"}
@@ -743,6 +743,7 @@ At every checkpoint I show real output: command output, curl output or test outp
   - `db/00_grants.sql` and `bin/db-setup.sh --grants` were removed. `--reset` cleaned up the old grants, so PORTAL now has 0 privileges on `DW` objects.
   - There are two pools: `portal` (PORTAL) and `warehouse` (`dw_report`, `CURRENT_SCHEMA = DW`). Report SQL runs as a user that cannot read the portal's tables.
   - The only thing the portal still does in the warehouse's database is create its own separate `PORTAL` schema (as SYSDBA through `docker exec`), because the brief requires one and only SYSDBA can create a user.
+- **M5:** the JSON `chart` object also has `horizontal` (true for the category bar chart, so long category names fit). With a single series there is no legend, so the value axis gets a title from the series label, e.g. "2017 Q4 (R$)". Chart.js is pinned to 4.5.1 with its SHA-384 integrity hash. The series colours are the first five slots of a colour-blind-checked categorical palette, always in the same order. The parameter fields moved into a tag file, `WEB-INF/tags/paramFields.tag`, shared by the report and chart pages. The shared lookup and denial logging moved into `ReportRequests`.
 - **M3:** there is a column type `YEAR` (no thousands separator, so 2017 is not shown as "2,017"). The planned `DECIMAL` type was dropped because no column needs it.
 
 ### Decisions (approved 2026-09-26)
