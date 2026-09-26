@@ -3,10 +3,14 @@
 # that project's Docker network, so it reaches the database as oracle:1521.
 # Start the warehouse first (../retail: ./bin/up.sh), then: docker compose up -d --build
 
+# A fixed project name, so the container is "reporting-portal-portal-1" whatever
+# the folder this repository was cloned into is called.
+name: reporting-portal
+
 services:
   portal:
     build: .
-    env_file: .env                           # PORTAL_* settings, including the database password
+    env_file: .env                           # database logins and portal settings (gitignored)
     environment:
       CATALINA_OPTS: "-Duser.timezone=UTC"   # every TIMESTAMP the app writes is UTC
     ports:
