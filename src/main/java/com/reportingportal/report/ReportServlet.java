@@ -1,6 +1,7 @@
 package com.reportingportal.report;
 
 import com.reportingportal.auth.AuthenticatedUser;
+import com.reportingportal.config.AppConfig;
 import com.reportingportal.config.AppContextListener;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
@@ -33,6 +34,7 @@ public class ReportServlet extends HttpServlet {
     private ReportRegistry registry;
     private List<String> categories;
     private ReportDao reportDao;
+    private AppConfig config;
 
     @Override
     @SuppressWarnings("unchecked")
@@ -40,6 +42,7 @@ public class ReportServlet extends HttpServlet {
         registry = (ReportRegistry) getServletContext().getAttribute(AppContextListener.REGISTRY);
         categories = (List<String>) getServletContext().getAttribute(AppContextListener.CATEGORIES);
         reportDao = new ReportDao((DataSource) getServletContext().getAttribute(AppContextListener.WAREHOUSE_DATA_SOURCE));
+        config = (AppConfig) getServletContext().getAttribute(AppContextListener.CONFIG);
     }
 
     @Override
@@ -89,6 +92,9 @@ public class ReportServlet extends HttpServlet {
         request.setAttribute("sortColumn", params.getSortColumn());
         request.setAttribute("direction", params.getDirection());
         request.setAttribute("sortLinks", sortLinks(report, params));
+        // For the "Schedule a daily CSV export" form: the validated parameters, as stored with a schedule.
+        request.setAttribute("canonicalQuery", params.toQueryString());
+        request.setAttribute("timeZone", config.timeZone().getId());
         if (params.getPage() > 1) {
             request.setAttribute("previousLink", params.toQueryStringWith(Map.of(ParamValidator.PAGE, String.valueOf(params.getPage() - 1))));
         }

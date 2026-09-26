@@ -131,3 +131,19 @@ button:hover, .button:hover { background: var(--accent-dark); }
 
 /* ---- chart page ---- */
 .chart-box { position: relative; height: 460px; }
+
+/* ---- exports ---- */
+.schedule-form { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--border); display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.schedule-form label { display: inline; margin: 0; font-weight: normal; }
+.schedule-form button { margin-top: 0; }
+.params { font-family: ui-monospace, Consolas, monospace; font-size: 12px; white-space: normal; word-break: break-all; }
+.actions-cell { white-space: nowrap; }
+button.small { padding: 3px 10px; margin: 0 4px 0 0; font-size: 13px; }
+button.secondary { background: #6b7684; }
+.status { font-size: 12px; font-weight: 600; padding: 1px 7px; border-radius: 10px; }
+.status-SUCCESS { background: var(--notice-bg); color: var(--notice-text); }
+.status-FAILED { background: var(--error-bg); color: var(--error-text); }
+.status-RUNNING { background: #eef1f5; color: var(--muted); }
+/* Export tables hold long parameters and error messages: let them wrap. */
+.report-table.wrap td { white-space: normal; }
+.report-table.wrap td.actions-cell, .report-table.wrap td.num { white-space: nowrap; }

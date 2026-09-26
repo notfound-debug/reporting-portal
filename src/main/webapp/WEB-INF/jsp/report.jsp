@@ -118,6 +118,17 @@
                 </c:otherwise>
             </c:choose>
 
+            <form method="post" action="<c:url value='/exports'/>" class="schedule-form">
+                <t:csrf/>
+                <input type="hidden" name="action" value="create">
+                <input type="hidden" name="report_code" value="${fn:escapeXml(report.code)}">
+                <input type="hidden" name="params" value="${fn:escapeXml(canonicalQuery)}">
+                <label for="run_time">Schedule a daily CSV export of this report, with these parameters, at</label>
+                <input type="time" id="run_time" name="run_time" value="06:00" required>
+                <span class="muted"><c:out value="${timeZone}"/></span>
+                <button type="submit">Schedule</button>
+            </form>
+
             <c:if test="${not empty previousLink or not empty nextLink}">
                 <nav class="pager">
                     <c:if test="${not empty previousLink}">

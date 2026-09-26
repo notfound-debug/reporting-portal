@@ -1,6 +1,11 @@
 package com.reportingportal.config;
 
+import com.reportingportal.auth.UserDao;
+import com.reportingportal.export.ExportRunDao;
+import com.reportingportal.export.ExportScheduler;
+import com.reportingportal.export.ScheduleDao;
 import com.reportingportal.report.CategoryList;
+import com.reportingportal.report.ReportDao;
 import com.reportingportal.report.ReportRegistry;
 import com.zaxxer.hikari.HikariDataSource;
 import jakarta.servlet.ServletContext;
@@ -8,9 +13,12 @@ import jakarta.servlet.ServletContextEvent;
 import jakarta.servlet.ServletContextListener;
 import jakarta.servlet.annotation.WebListener;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.sql.Driver;
 import java.sql.DriverManager;
 import java.sql.SQLException;
+import java.time.Instant;
 import java.util.Collections;
 import java.util.List;
 import java.util.logging.Level;
@@ -39,6 +47,7 @@ public class AppContextListener implements ServletContextListener {
 
     private HikariDataSource portalPool;
     private HikariDataSource warehousePool;
+    private ExportScheduler scheduler;
 
     @Override
     public void contextInitialized(ServletContextEvent event) {
@@ -64,10 +73,12 @@ public class AppContextListener implements ServletContextListener {
             context.setAttribute(WAREHOUSE_DATA_SOURCE, warehousePool);
             context.setAttribute(REGISTRY, registry);
             context.setAttribute(CATEGORIES, categories);
-        } catch (SQLException e) {
+
+            startScheduler(config, registry, categories);
+        } catch (SQLException | IOException e) {
             LOG.log(Level.SEVERE, "Reporting Portal failed to start: " + e.getMessage(), e);
             closePools();
-            throw new IllegalStateException("Could not read the portal or warehouse tables", e);
+            throw new IllegalStateException("Could not start: " + e.getMessage(), e);
         } catch (RuntimeException e) {
             // Throwing here makes Tomcat mark the web app as failed to start, which
             // is what we want: better no app than one without a database.
@@ -77,8 +88,32 @@ public class AppContextListener implements ServletContextListener {
         }
     }
 
+    /**
+     * Runs left RUNNING were cut off when the portal last stopped: mark them FAILED
+     * (safe only because a single portal instance runs), then start the background thread.
+     */
+    private void startScheduler(AppConfig config, ReportRegistry registry, List<String> categories)
+            throws SQLException, IOException {
+        Files.createDirectories(config.exportDir());
+        ExportRunDao runs = new ExportRunDao(portalPool);
+        int interrupted = runs.failInterruptedRuns(Instant.now());
+        if (interrupted > 0) {
+            LOG.warning(interrupted + " export run(s) were interrupted by the last shutdown; marked FAILED");
+        }
+        scheduler = new ExportScheduler(new ScheduleDao(portalPool), runs, new UserDao(portalPool), registry,
+                categories, new ReportDao(warehousePool), config.exportDir(), config.timeZone(),
+                config.schedulerIntervalSeconds());
+        scheduler.start();
+    }
+
     @Override
     public void contextDestroyed(ServletContextEvent event) {
+        // Order matters: stop the scheduler first, so a running export still has its
+        // connections; then close the pools; then release the JDBC driver.
+        if (scheduler != null) {
+            scheduler.stop();
+            scheduler = null;
+        }
         closePools();
         deregisterJdbcDrivers();
         LOG.info("Reporting Portal stopped");
