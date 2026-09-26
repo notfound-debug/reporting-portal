@@ -114,3 +114,17 @@ button:hover, .button:hover { background: var(--accent-dark); }
 .report-card h2 a:hover { text-decoration: underline; }
 .report-links { margin-bottom: 0; }
 .code { float: right; font-family: ui-monospace, Consolas, monospace; font-size: 12px; }
+
+/* ---- report page ---- */
+.report-form { display: flex; flex-wrap: wrap; gap: 4px 20px; align-items: flex-start; }
+.report-form .field { min-width: 160px; }
+.report-form .actions { align-self: flex-end; display: flex; gap: 14px; align-items: baseline; }
+.table-wrap { overflow-x: auto; }
+.report-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.report-table th, .report-table td { padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.report-table th { background: #eef1f5; position: sticky; top: 0; }
+.report-table th a { text-decoration: none; }
+.report-table tbody tr:hover { background: #f6f8fb; }
+.report-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sort-mark { font-size: 11px; color: var(--muted); }
+.pager { display: flex; gap: 18px; margin-top: 14px; align-items: baseline; }
