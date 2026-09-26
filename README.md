@@ -104,16 +104,12 @@ Why some reports have no date range: views such as state × category already sum
 
 ## Screenshots
 
-<!-- Screenshot: log in as analyst, open /reports/monthly_revenue?from_month=2018-01&to_month=2018-06, save as docs/screenshots/report.png, then remove this comment. -->
 ![Report page with form, sorting and paging](docs/screenshots/report.png)
 
-<!-- Screenshot: as analyst, open /charts/payment_mix?from_month=2017-01&to_month=2018-08, save as docs/screenshots/chart.png, then remove this comment. -->
 ![Payment mix chart](docs/screenshots/chart.png)
 
-<!-- Screenshot: schedule a report, press "Run now", reload /exports after ~30 s, save as docs/screenshots/exports.png, then remove this comment. -->
 ![Scheduled exports and run history](docs/screenshots/exports.png)
 
-<!-- Screenshot: as viewer, open /reports/customer_moves (403), save as docs/screenshots/forbidden.png, then remove this comment. -->
 ![A viewer refused an admin-only report](docs/screenshots/forbidden.png)
 
 ## How it is built
